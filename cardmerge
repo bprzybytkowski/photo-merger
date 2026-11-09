@@ -1,0 +1,26 @@
+#!/bin/bash
+# Pair photos by capture time (front, back, front, back, ...) and merge each pair side by side.
+# Usage: cardmerge [dir]    writes <dir>/merged/merged-NN.jpg
+set -euo pipefail
+cd "${1:-.}"
+mkdir -p merged
+
+i=0
+while IFS= read -r front; do
+  if ! IFS= read -r back; then
+    echo "warning: odd number of photos, last one skipped: $front" >&2
+    break
+  fi
+  i=$((i + 1))
+  out=$(printf "merged/merged-%02d.jpg" "$i")
+  echo "$out  <-  $front + $back"
+  magick \( "$front" -auto-orient \) \( "$back" -auto-orient \) +append -quality 95 "$out"
+done < <(
+  # date fallback: DateTimeOriginal, then CreateDate, then FileModifyDate ("-" = missing)
+  exiftool -q -T -DateTimeOriginal -CreateDate -FileModifyDate -FileName \
+    -ext jpg -ext jpeg -ext png -ext heic . |
+  awk -F '\t' '{ print ($1 != "-" ? $1 : ($2 != "-" ? $2 : $3)) "\t" $4 }' |
+  sort | cut -f2-
+)
+
+echo "done: $i pair(s) in $PWD/merged"
